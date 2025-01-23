@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint with pylint
+        run: pylint src/
+
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+
+      - name: Run tests
+        run: pytest src/
+
+      - name: Build Docker image
+        run: docker build -t hivebox:test .
+
+      - name: Test Docker image
+        run: |
+          docker run -d -p 8000:8000 --name hivebox hivebox:test
+          sleep 5
+          curl http://localhost:8000/version | grep -q "${{ env.VERSION }}"
+
+      - name: OSSF Scorecard
+        uses: ossf/scorecard-action@v2.4.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
